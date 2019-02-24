@@ -1,0 +1,16 @@
+https://developers.google.com/assistant/sdk/guides/service/python/embed/config-dev-project-and-account
+
+scp ~/Downloads/client_secret_*.json <username>@<device-ip-address>:</path/to/assistant-sdk/project>
+password: password-for-device
+
+
+https://console.actions.google.com/project/petfeeder-e163b/deviceregistration/
+
+
+https://developers.google.com/assistant/sdk/reference/traits/startstop
+
+
+
+887140845540-5adfn4q92ttt2uu4um9tdtv4e55h9659.apps.googleusercontent.com
+
+-Dp1W2wxz2NpX4yx-zS-P3jt
