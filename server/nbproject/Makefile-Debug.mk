@@ -35,8 +35,10 @@ OBJECTDIR=${CND_BUILDDIR}/${CND_CONF}/${CND_PLATFORM}
 
 # Object Files
 OBJECTFILES= \
+	${OBJECTDIR}/UCrytiger.o \
 	${OBJECTDIR}/ULog.o \
 	${OBJECTDIR}/UMySqlConnector.o \
+	${OBJECTDIR}/UMySqlWrapper.o \
 	${OBJECTDIR}/UNetworkUDPServer.o \
 	${OBJECTDIR}/USimpleIni.o \
 	${OBJECTDIR}/UUtil.o \
@@ -67,6 +69,11 @@ ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/server: ${OBJECTFILES}
 	${MKDIR} -p ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}
 	${LINK.cc} -o ${CND_DISTDIR}/${CND_CONF}/${CND_PLATFORM}/server ${OBJECTFILES} ${LDLIBSOPTIONS}
 
+${OBJECTDIR}/UCrytiger.o: UCrytiger.cpp
+	${MKDIR} -p ${OBJECTDIR}
+	${RM} "$@.d"
+	$(COMPILE.cc) -g -I../build/include -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/UCrytiger.o UCrytiger.cpp
+
 ${OBJECTDIR}/ULog.o: ULog.cpp
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
@@ -76,6 +83,11 @@ ${OBJECTDIR}/UMySqlConnector.o: UMySqlConnector.cpp
 	${MKDIR} -p ${OBJECTDIR}
 	${RM} "$@.d"
 	$(COMPILE.cc) -g -I../build/include -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/UMySqlConnector.o UMySqlConnector.cpp
+
+${OBJECTDIR}/UMySqlWrapper.o: UMySqlWrapper.cpp
+	${MKDIR} -p ${OBJECTDIR}
+	${RM} "$@.d"
+	$(COMPILE.cc) -g -I../build/include -MMD -MP -MF "$@.d" -o ${OBJECTDIR}/UMySqlWrapper.o UMySqlWrapper.cpp
 
 ${OBJECTDIR}/UNetworkUDPServer.o: UNetworkUDPServer.cpp
 	${MKDIR} -p ${OBJECTDIR}
