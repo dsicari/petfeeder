@@ -56,7 +56,8 @@ string TMySqlWrapper::GetPassword()
 //------------------------------------------------------------------------------
 void TMySqlWrapper::ManageException(sql::SQLException &e,  const char *file, const char *function, long int line)
 {
-    if (e.getErrorCode() != 0){
+    if (e.getErrorCode() != 0)
+    {
         memset(BufferError, 0, sizeof(BufferError));
         sprintf(BufferError, "SQLException file=%s, function=%s(), line=%ld, message=%s, code= %d, state=%s",
                             file, function, line,
@@ -64,37 +65,53 @@ void TMySqlWrapper::ManageException(sql::SQLException &e,  const char *file, con
     }
 }
 //------------------------------------------------------------------------------
-void TMySqlWrapper::Connect()
+bool TMySqlWrapper::Connect()
 {
-    try{
+    bool rslt=false;
+    try
+    {
         Driver = get_driver_instance();
         Con = Driver->connect(HostPort, User, Password);
         bool myTrue = true;  
         Con->setClientOption("OPT_RECONNECT", &myTrue); 
+        rslt=true;
     } 
-    catch(sql::SQLException &e){
+    catch(sql::SQLException &e)
+    {
         ManageException(e, __FILE__, __FUNCTION__, __LINE__);
     }
+    return rslt;
 }
 //------------------------------------------------------------------------------
-void TMySqlWrapper::SwitchDb(const string& db_name)
+bool TMySqlWrapper::SwitchDb(const string& db_name)
 {
-    try{
+    bool rslt=false;
+    try
+    {
         Con->setSchema(db_name);
         Stmt = Con->createStatement();
-    } catch (sql::SQLException &e) {
+        rslt=true;
+    }
+    catch(sql::SQLException &e) 
+    {
         ManageException(e, __FILE__, __FUNCTION__, __LINE__);
     }
+    return rslt;
 }
 //------------------------------------------------------------------------------
-void TMySqlWrapper::Prepare(const string& query)
+bool TMySqlWrapper::Prepare(const string& query)
 {
-    try{
+    bool rslt=false;
+    try
+    {
         PrepStmt = Con->prepareStatement(query);
+        rslt=true;
     } 
-    catch(sql::SQLException &e){
+    catch(sql::SQLException &e)
+    {
         ManageException(e, __FILE__, __FUNCTION__, __LINE__);
     }
+    return rslt;
 }
 //------------------------------------------------------------------------------
 void TMySqlWrapper::DeletePrepare()
@@ -118,34 +135,44 @@ void TMySqlWrapper::SetString(const int& num, const string& data)
     PrepStmt->setString(num, data);
 }
 //------------------------------------------------------------------------------
-void TMySqlWrapper::ExecuteQuery(const string& query)
+bool TMySqlWrapper::ExecuteQuery(const string& query)
 {
-    try{
+    bool rslt=false;
+    try
+    {
         if(query != ""){
             Res = Stmt->executeQuery(query);
         } 
         else{
             Res = PrepStmt->executeQuery();
         }
+        rslt=true;
     } 
-    catch(sql::SQLException &e){
+    catch(sql::SQLException &e)
+    {
         ManageException(e, __FILE__, __FUNCTION__, __LINE__);
     }
+    return rslt;
 }
 //------------------------------------------------------------------------------
-void TMySqlWrapper::ExecuteUpdate(const string& act)
+bool TMySqlWrapper::ExecuteUpdate(const string& act)
 {
-    try {
+    bool rslt=false;
+    try 
+    {
         if(act != ""){
             Stmt->execute(act);
         }
         else{
             PrepStmt->execute();
         }
+        rslt=true;
     } 
-    catch(sql::SQLException &e){
+    catch(sql::SQLException &e)
+    {
         ManageException(e, __FILE__, __FUNCTION__, __LINE__);
     }
+    return rslt;
 }
 //------------------------------------------------------------------------------
 void TMySqlWrapper::CloseCon()
@@ -176,6 +203,16 @@ int TMySqlWrapper::GetInt(const string& field)
 int TMySqlWrapper::GetInt(const int& index)
 {
     return Res->getInt(index);
+}
+//------------------------------------------------------------------------------
+unsigned long int TMySqlWrapper::GetULongInt(const string &field)
+{
+    return Res->getUInt64(field);
+}
+//------------------------------------------------------------------------------
+unsigned long int TMySqlWrapper::GetULongInt(const int &index)
+{
+    return Res->getUInt64(index);
 }
 //------------------------------------------------------------------------------
 sql::ResultSet* TMySqlWrapper::GetRes()

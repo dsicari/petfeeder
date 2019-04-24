@@ -2,7 +2,6 @@
 
 //------------------------------------------------------------------------------
 TNetworkClientUDP::TNetworkClientUDP(const char *host, unsigned int port){
-    Bind2Any=false;
     memcpy(Host, host, sizeof(host));
     Port=port;
     memset(&ServerAddr, 0, sizeof(ServerAddr));       
@@ -10,16 +9,6 @@ TNetworkClientUDP::TNetworkClientUDP(const char *host, unsigned int port){
     ServerAddr.sin_family = AF_INET; 
     ServerAddr.sin_port = htons(Port); 
     ServerAddr.sin_addr.s_addr = inet_addr(Host); 
-}
-//------------------------------------------------------------------------------
-TNetworkClientUDP::TNetworkClientUDP(unsigned int port){
-    Bind2Any=true;
-    Port=port;
-    memset(&ServerAddr, 0, sizeof(ServerAddr));       
-
-    ServerAddr.sin_family = AF_INET; 
-    ServerAddr.sin_port = htons(Port); 
-    ServerAddr.sin_addr.s_addr = INADDR_ANY; 
 }
 //------------------------------------------------------------------------------
 TNetworkClientUDP::~TNetworkClientUDP(){
@@ -39,23 +28,7 @@ bool TNetworkClientUDP::CreateSocket(){
     return rslt;
 }
 //------------------------------------------------------------------------------
-bool TNetworkClientUDP::Send(unsigned char *bufferSend, int lenBufferSend){
-    bool rslt=false;
-
-    if(Sock < 0){
-        // socket nao foi criado, retornar
-        return rslt;
-    }
-
-    int r = sendto(Sock, (const unsigned char *)bufferSend, lenBufferSend, MSG_CONFIRM, (const struct sockaddr *) &ServerAddr, sizeof(ServerAddr)); 
-    if(r >= 0){
-        rslt=true;              
-    }
-
-    return rslt;
-}
-//------------------------------------------------------------------------------
-bool TNetworkClientUDP::SendRcv(unsigned char *bufferSend, int lenBufferSend, unsigned char *bufferRcv, int lenBufferRcv, int *lenBufferRcvData, int timeout){
+bool TNetworkClientUDP::SendRcv(unsigned char *bufferSend, int lenBufferSend, unsigned char *bufferRcv, int lenBufferRcv, int *lenBufferRcvData){
     bool rslt=false;
 
     if(Sock < 0){
@@ -67,11 +40,6 @@ bool TNetworkClientUDP::SendRcv(unsigned char *bufferSend, int lenBufferSend, un
     if(r >= 0){
         // Enviou bytes, entao aguardar resposta
         socklen_t len_servaddr=0;
-        // timeout recepcao
-        struct timeval tv;
-        tv.tv_sec = timeout;
-        tv.tv_usec = 0;
-        setsockopt(Sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof tv);
         r = recvfrom(Sock, (unsigned char *)bufferRcv, lenBufferRcv, MSG_WAITALL, (struct sockaddr *) &ServerAddr, &len_servaddr); 
         if(r >= 0){
             if(r > lenBufferRcv){

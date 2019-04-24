@@ -31,21 +31,23 @@ public:
     string GetUser();
     string GetPassword();
     void ManageException(sql::SQLException &e,  const char *file, const char *function, long int line);
-    void Connect();
-    void SwitchDb(const string& db_name);
-    void Prepare(const string& query);
+    bool Connect();
+    bool SwitchDb(const string& db_name);
+    bool Prepare(const string& query);
     void DeletePrepare();
     void SetInt(const int& num, const int& data);
     void SetULongInt(const int &num, const uint64_t &data);
     void SetString(const int& num, const string& data);
-    void ExecuteQuery(const string& query = "");
-    void ExecuteUpdate(const string& sql ="");
+    bool ExecuteQuery(const string& query = "");
+    bool ExecuteUpdate(const string& sql ="");
     bool Fetch();
     sql::ResultSet* GetRes();
     string GetString(const string& field);
     string GetString(const int& index);
     int GetInt(const string& field);
     int GetInt(const int& index);
+    unsigned long int GetULongInt(const string &field);
+    unsigned long int GetULongInt(const int &index);
     void CloseCon();
     
     char BufferError[2048];

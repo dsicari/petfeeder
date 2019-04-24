@@ -6,8 +6,6 @@
 #include <unistd.h> 
 #include <string.h> 
 
-#include <sys/time.h>
-
 #include <netdb.h>
 #include <sys/types.h> 
 #include <sys/socket.h> 
@@ -21,16 +19,13 @@ class TNetworkClientUDP{
         char Host[LEN_HOST];
         unsigned int Port;   
         struct sockaddr_in ServerAddr;   
-        int Sock;     
-        bool Bind2Any;
+        int Sock;      
          
     public:
-        TNetworkClientUDP(unsigned int port);
         TNetworkClientUDP(const char *host, unsigned int port);
         ~TNetworkClientUDP();
         bool CreateSocket();
-        bool Send(unsigned char *bufferSend, int lenBufferSend);
-        bool SendRcv(unsigned char *bufferSend, int lenBufferSend, unsigned char *bufferRcv, int lenBufferRcv, int *lenBufferRcvData, int timeout=5);
+        bool SendRcv(unsigned char *bufferSend, int lenBufferSend, unsigned char *bufferRcv, int lenBufferRcv, int *lenBufferRcvData);
 };
 //------------------------------------------------------------------------------
 class TNetworkServerUDP{
@@ -42,19 +37,16 @@ class TNetworkServerUDP{
         char *pHostAddr; /* dotted decimal host addr string */
         char Bind[LEN_HOST];
         unsigned int Port;  
-        int Sock;  
-        bool Bind2Any;
+        int Sock;    
          
     public:
-        TNetworkServerUDP(unsigned int port);
         TNetworkServerUDP(const char *host, unsigned int port);
         ~TNetworkServerUDP();
         bool CreateSocket();
         bool CreateServer();
         bool Rcv(unsigned char *bufferRcv, int lenBufferRcv, int *lenBufferRcvData);
-        bool Send(unsigned char *bufferSend, int lenBufferSend);
-        char *GetClientName();
-        char *GetClientAddress();
+        char *GetHostName();
+        char *GetHostAddress();
 };
 //------------------------------------------------------------------------------
 #endif

@@ -1,7 +1,4 @@
-#include "UUtil.h"
-#include <stdio.h>
-#include <cstring>
-
+#include "utl.h"
 
 //------------------------------------------------------------------------------
 static unsigned short _incrCrcCalc( unsigned char ch, unsigned short currentCrc )
@@ -30,21 +27,4 @@ unsigned short calccrc16(const void* void_data, unsigned data_size)
       crc=_incrCrcCalc(data[i],crc);
    }
    return crc;
-}
-//------------------------------------------------------------------------------
-char * ucharByteArray2charHexArray(unsigned char *buffer, int len){
-    char *temp=new char[len*2+1];
-    for(int i=0; i < len; i++){
-        sprintf(&temp[i*2], "%02X", buffer[i]);
-    }
-    memset(&temp[len*2], '\0', 1);
-    return temp;
-}
-//------------------------------------------------------------------------------
-char *appendChar2CharArray(char* array, int len, char c)
-{
-    char *ret = new char[len+1];
-    memcpy(ret, array, len);
-    ret[len+1]=c;
-    return ret;
 }

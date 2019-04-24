@@ -58,10 +58,6 @@
  */
 #define highByte(w) ((uint8_t) ((w) >> 8))
 
-unsigned short calccrc16(const void* void_data, unsigned data_size);
-
-char * ucharByteArray2charHexArray(unsigned char *buffer, int len);
-
-char * appendChar2CharArray(char* array, int len, char c);
+extern unsigned short calccrc16(const void* void_data, unsigned data_size);
 
 #endif

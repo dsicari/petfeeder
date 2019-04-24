@@ -16,7 +16,8 @@
 #include "UMySqlWrapper.h"
 #include "UCrytiger.h"
 
-#define MAX_LEN 1024
+#define MAX_LEN         1024
+#define LOG_ENABLED     true
 //------------------------------------------------------------------------------
 using namespace std;
 const char *iniFilePath="server.ini";
@@ -83,21 +84,108 @@ unsigned long int getToken(){
 int idPacketRcv(unsigned char *buffer, int len){
     int rslt = 0;
     if(buffer[13] == ID_REPORT) rslt=ID_REPORT;
-    else if(buffer[13] == ID_TESTE) rslt=ID_TESTE;
+    else if(buffer[13] == CMD_RESP) rslt=CMD_RESP;
     else rslt = -1; // Identificador nao reconhecido 
     return rslt;
 }
 //------------------------------------------------------------------------------
-int parseReport(unsigned char *buffer, int len, TPacketReport *tmp){
-    int rslt = 0;
+bool checkCRC(unsigned char *buffer, int len)
+{
+    bool rslt=false;
     unsigned short crcRecebido=0;
     memcpy(&crcRecebido, &buffer[len-2], 2);
     unsigned short crcCalculado = calccrc16(&buffer[2], len-4); 
     if(crcRecebido == crcCalculado){
-        memcpy(tmp, buffer, sizeof(TPacketReport));
-        rslt=0;
+        rslt=true;
     }
-    else rslt = -1; // CRC nao bateu
+    return rslt;
+}
+//------------------------------------------------------------------------------
+void sendUDP(unsigned char *buffer, int len, int modo, TCrytiger *tiger, TNetworkServerUDP *serverUDP)
+{
+    if(modo==CIPHERTEXT){
+        tiger->Encrypt(&buffer[2], len-4);
+    }
+    serverUDP->Send((unsigned char *)&buffer, len);
+}//-----------------------------------------------------------------------------
+bool conectaBDPetFeeder(TMySqlWrapper *mysql, bool log=false)
+{
+    bool rslt=false;
+    mysql->Init("localhost:6033", "petfeeder", "Fatec2019!");
+    if(mysql->Connect() == true)
+    {
+        if(log==true) log_debug("Conectado ao mysql, token=%ul, pidParent=%d, pid=%d", getppid(), getpid());
+        if(mysql->SwitchDb("petfeeder") == true)
+        {
+            if(log==true) log_debug("SwitchDb OK, token=%ul, pidParent=%d, pid=%d", getppid(), getpid());
+            rslt=true;
+        }else if(log==true) log_error("Mysql database SwitchDb():%s",mysql->BufferError);
+    }else if(log==true) log_error("Mysql database Connect():%s",mysql->BufferError);
+    return rslt;
+}
+//------------------------------------------------------------------------------
+bool verificaMsgRet(char *sn, int len, TPacketResponse *pktResponse)
+{
+    bool rslt=false;
+    try
+    {
+        TMySqlWrapper mysql;
+        if(conectaBDPetFeeder(&mysql, LOG_ENABLED) == true)
+        {
+            if(mysql.Prepare("select * from outgoing where sn_device=? and realizado = 0") == true)
+            {
+                string str="";
+                str.assign(sn, len);
+                mysql.SetString(1, str);  
+                if(mysql.ExecuteQuery() == true)
+                {                
+                    mysql.CloseCon();
+                    while(mysql.Fetch()){
+                        pktResponse->idCmd=mysql.GetULongInt("id");
+                        pktResponse->cmd=mysql.GetInt("cmd");
+                        memcpy(&pktResponse->valor, mysql.GetString("valor").c_str(), mysql.GetString("valor").length());
+                    }
+                    rslt=true;
+                }
+            }
+        }
+    }       
+    catch(exception& e)
+    {
+        rslt=false;
+    }
+    
+    return rslt;
+}
+//------------------------------------------------------------------------------
+bool updateCmdOutgoing(char *sn, int len, TPacketCmdResponse *pktCmdResponse)
+{
+    bool rslt=false;
+    try
+    {
+        TMySqlWrapper mysql;
+        if(conectaBDPetFeeder(&mysql, LOG_ENABLED) == true)
+        {
+            if(mysql.Prepare("update outgoing set realizado = ? where id=? and sn_device=?") == true)
+            {
+                mysql.SetInt(1, pktCmdResponse->cmdStatus);
+                mysql.SetULongInt(2, pktCmdResponse->idCmd);
+                string str="";
+                str.assign(sn, len);
+                mysql.SetString(3, str);  
+                if(mysql.ExecuteUpdate() == true)
+                {                
+                    rslt=true;
+                }
+                mysql.CloseCon();
+            }
+        }
+    }       
+    catch(exception& e)
+    {
+        rslt=false;
+    }
+    
     return rslt;
 }
 //------------------------------------------------------------------------------
@@ -138,122 +226,136 @@ int main() {
         int r=0;
       
         r=serverUDP->Rcv(bufferRcv, sizeof(bufferRcv), &lenBufferRcvData);
-        if(r == true && lenBufferRcvData > MAX_LEN){
-            log_error("Server received datagram from %s (%s) and droped %d bytes, max=", 
-                        serverUDP->GetClientName(), 
-                        serverUDP->GetClientAddress(),
-                        lenBufferRcvData,
-                        MAX_LEN); 
+        if(r == true && lenBufferRcvData > MAX_LEN)
+        {
+            // Erro: Pacote recebido excedeu MAX_LEN
+            log_error("Server recebeu pacote de %s (%s) e negou %d bytes, max=", serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData, MAX_LEN); 
         }
-        else if(r == true){
-            pr=waitpid(-1, &status, WNOHANG);
-            if(pr == -1) log_debug("No forked child, waitpid=%d", pr);
-            p=fork();
-            if(p == -1){
-                log_error("Fork fails, exiting...");
-                exit(EXIT_FAILURE);
-            }
-            if(p == 0){
-                // Child process forked
-                unsigned long int token=getToken();
-                if(bufferRcv[0] == STX){
-                    if(bufferRcv[1] == PLAINTEXT || bufferRcv[1] == CIPHERTEXT){
-                        log_debug("Child process started token=%ul, pidParent=%d, pid=%d, server received datagram from %s (%s) %d bytes, buffer=%s ", 
-                                    token,
-                                    getppid(),
-                                    getpid(),
-                                    serverUDP->GetClientName(), 
-                                    serverUDP->GetClientAddress(), 
-                                    lenBufferRcvData,
-                                    ucharByteArray2charHexArray(bufferRcv, lenBufferRcvData));
-                        
-                        if(bufferRcv[1] == CIPHERTEXT){
-                            tiger.Decrypt(&bufferRcv[2], lenBufferRcvData-2);
-                            log_debug("Token=%d, pidParent=%d, pid=%d, buffer decrypted=%s ", 
-                                        token,
-                                        getppid(),
-                                        getpid(),
-                                        ucharByteArray2charHexArray(bufferRcv, lenBufferRcvData));
-                        }
-                        
-                        if(memcmp(&bufferRcv[2], "assinatura", LEN_SIGN) != 0){
-                            log_error("Token=%d, pidParent=%d, pid=%d, assinatura nao bateu (%.10s)", token, getppid(), getpid(), (char *)bufferRcv[2]);
-                        }
-                    }
-                    else{
-                        log_error("Modo nao bateu (%d) token=%ul, pidParent=%d, pid=%d", bufferRcv[1], token, getppid(), getpid());
-                        exit(EXIT_FAILURE);
-                    }
+        else if(r == true)
+        {
+            bool erroBuffer=false;
+            
+            /**** Verifica buffer recebido ****/           
+            if(bufferRcv[0] == STX)
+            {
+                if(bufferRcv[1] == PLAINTEXT){
+                    log_debug("Server recebeu pacote de %s (%s) %d bytes, buffer=%s ", serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData, ucharByteArray2charHexArray(bufferRcv, lenBufferRcvData));
+                }
+                else if(bufferRcv[1] == CIPHERTEXT){
+                    tiger.Decrypt(&bufferRcv[2], lenBufferRcvData-2);
+                    log_debug("Server recebeu pacote encriptado de %s (%s) %d bytes, buffer plaintext=%s ", serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData, ucharByteArray2charHexArray(bufferRcv, lenBufferRcvData));
                 }
                 else{
-                    log_error("Iniciador nao bateu (%d) token=%ul, pidParent=%d, pid=%d", bufferRcv[0], token, getppid(), getpid());
-                    exit(EXIT_FAILURE);
-                }                
+                    log_error("Modo nao bateu=%d",bufferRcv[1]);
+                    erroBuffer=true;
+                }
+                
+                if(!erroBuffer && checkCRC(bufferRcv, lenBufferRcvData) == false){
+                    log_error("CRC pacote recebido nao bateu");
+                    erroBuffer=true;
+                }
+                else{
+                    if(memcmp(&bufferRcv[2], "assinatura", LEN_SIGN) != 0){
+                        log_error("Assinatura nao bateu (%.10s)", (char *)bufferRcv[2]);
+                        erroBuffer=true;
+                    }
+                }
+            }
+            else{
+                log_error("Iniciador pacote invalido");
+                erroBuffer=true;
+            }
+
+            if(erroBuffer == true) continue;
+                        
+            pr=waitpid(-1, &status, WNOHANG);
+            if(pr == -1) log_debug("No forked child, waitpid=%d", pr);
+            
+            p=fork();
+            if(p == -1) log_error("Fork fails!!");
+            else if(p == 0){
+                // Child process forked
+                bool task=false;
+                unsigned long int token=getToken();
+                log_debug("Child process started token=%ul, pidParent=%d, pid=%d", token, getppid(), getpid());                                   
                 tipoPacote=idPacketRcv(bufferRcv, sizeof(bufferRcv));
                 if(tipoPacote == ID_REPORT){
                     TPacketReport pkt;
-                    r=parseReport(bufferRcv, sizeof(TPacketReport), &pkt);
-                    if(r == 0){
-                        if(setConfigurationsChild(pkt.pid.sn) == true){
-                            log_debug("ID_REPORT received token=%d, pidParent=%d, pid=%d, server received datagram from %s (%s) %d bytes", token, getppid(), getpid(), serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData);
-                            log_debug("identificador=0x%02X", pkt.pid.id);
-                            log_debug("sequencia=%ul", pkt.pid.seq);
-                            log_debug("status=0x%02X", pkt.pid.st);
-                            log_debug("uptime=%ul", pkt.uptime);
-                            log_debug("serial=%s", pkt.pid.sn);
-                            log_debug("nivel alimento=%i", pkt.nivel_alm);
-                            log_debug("peso=%i", pkt.peso);
-                            log_debug("horario_alimentacao=%s", pkt.horario_alm);
-                            log_debug("quantidade alimento=%i", pkt.qtde_alm);
-                            log_debug("crc=0x%02X", pkt.crc);
-                            TMySqlWrapper mysql;
-                            mysql.Init("localhost:6033", "petfeeder", "fatec2019!");
-                            mysql.Connect();
-                            mysql.SwitchDb("petfeeder");                            
-                            log_debug("Mysql database connected? buffer:%s",mysql.BufferError);
-                            mysql.Prepare("INSERT INTO incoming(pid, seq, st, uptime, sn, nivel_alm, peso, horario_alm, qtde_alm, token, datahora) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())");
-                            mysql.SetInt(1, (int)pkt.pid.id);
-                            mysql.SetULongInt(2, pkt.pid.seq);
-                            mysql.SetInt(3, (int)pkt.pid.st);
-                            mysql.SetULongInt(4, pkt.uptime);
-                            mysql.SetString(5, pkt.pid.sn);
-                            mysql.SetInt(6, (int)pkt.nivel_alm);
-                            mysql.SetInt(7, (int)pkt.peso);
-                            mysql.SetString(8, pkt.horario_alm);
-                            mysql.SetInt(9, (int)pkt.qtde_alm);  
-                            mysql.SetULongInt(10, token);
-                            mysql.ExecuteUpdate();
-                            log_debug("Pacote recebido e tentado inserir no banco: %s", mysql.BufferError);
-                            mysql.CloseCon();                      
-                        }                        
-                    }
-                    else{
-                        log_error("parseReport=%d",r);
-                    }
+                    memcpy(&pkt, bufferRcv, sizeof(TPacketReport));
+                    if(setConfigurationsChild(pkt.pid.sn) == true)
+                    {
+                        log_debug("ID_REPORT received token=%d, pidParent=%d, pid=%d, server received datagram from %s (%s) %d bytes", token, getppid(), getpid(), serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData);
+                        log_debug("identificador=0x%02X", pkt.pid.id);
+                        log_debug("sequencia=%ul", pkt.pid.seq);
+                        log_debug("status=0x%02X", pkt.pid.st);
+                        log_debug("uptime=%ul", pkt.uptime);
+                        log_debug("serial=%s", pkt.pid.sn);
+                        log_debug("nivel alimento=%i", pkt.nivel_alm);
+                        log_debug("peso=%i", pkt.peso);
+                        log_debug("horario_alimentacao=%s", pkt.horario_alm);
+                        log_debug("quantidade alimento=%i", pkt.qtde_alm);
+                        log_debug("crc=0x%02X", pkt.crc);
+                        TMySqlWrapper mysql;
+                        if(conectaBDPetFeeder(&mysql, LOG_ENABLED) == true)
+                        {
+                            if(mysql.Prepare("INSERT INTO incoming(pid, seq, st, uptime, sn, nivel_alm, peso, horario_alm, qtde_alm, token, datahora) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())") == true)
+                            { 
+                                mysql.SetInt(1, (int)pkt.pid.id);
+                                mysql.SetULongInt(2, pkt.pid.seq);
+                                mysql.SetInt(3, (int)pkt.pid.st);
+                                mysql.SetULongInt(4, pkt.uptime);
+                                mysql.SetString(5, pkt.pid.sn);
+                                mysql.SetInt(6, (int)pkt.nivel_alm);
+                                mysql.SetInt(7, (int)pkt.peso);
+                                mysql.SetString(8, pkt.horario_alm);
+                                mysql.SetInt(9, (int)pkt.qtde_alm);  
+                                mysql.SetULongInt(10, token);
+                                if(mysql.ExecuteUpdate() == true)
+                                {
+                                    log_debug("ExecuteUpdate OK, token=%ul, pidParent=%d, pid=%d", token, getppid(), getpid());
+                                    task=true;
+                                    mysql.CloseCon();
+                                }else log_error("Mysql database ExecuteUpdate():%s",mysql.BufferError);    
+                                
+                                // Verifica se ha mensagem de retorno  
+                                TPacketResponse pktResponse;
+                                if(verificaMsgRet(pkt.pid.sn, sizeof(pkt.pid.sn), &pktResponse) == true)
+                                {
+                                    log_debug("SN %s possui cmd %d valor %s", appendChar2CharArray(pkt.pid.sn, sizeof(pkt.pid.sn), '\0'), pktResponse.cmd, pktResponse.valor);
+                                    pktResponse.init.iniciador=STX;
+                                    pktResponse.init.modo=pkt.init.modo;
+                                    pktResponse.pid.id=pkt.pid.id;
+                                    pktResponse.pid.seq=pkt.pid.seq;
+                                    memcpy(pktResponse.pid.sign, pkt.pid.sign, sizeof(pkt.pid.sign));
+                                    memcpy(pktResponse.pid.sn, pkt.pid.sn, sizeof(pkt.pid.sn));
+                                    pktResponse.pid.st=OK;
+                                    pktResponse.crc = calccrc16(&pktResponse + 2, sizeof(pktResponse)-4);
+                                    sendUDP((unsigned char *)&pktResponse, sizeof(TPacketResponse), pktResponse.init.modo, &tiger, serverUDP);
+                                }else log_error("select() retornou false para msg_ret, buffer mysql=%s",mysql.BufferError);
+                            }else log_error("Mysql database Prepare():%s",mysql.BufferError);
+                            if(task==false) mysql.CloseCon(); // Se nao completou tarefa de insert no banco, fechar conexao
+                        }                         
+                    }else log_error("setConfigurationsChild()");
                 }
-                /* SELECT ZUADO! https://github.com/original-work/MySQL-Connector-Cpp-Wrapper-Class/blob/master/main.cpp */
-                else if(tipoPacote == ID_TESTE){
-                    printf("ID_TESTE received token=%d, pidParent=%d, pid=%d, server received datagram from %s (%s) %d bytes", token, getppid(), getpid(), serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData);
-                    TMySqlWrapper mysql;
-                    mysql.Init("localhost:6033", "petfeeder", "fatec2019!");
-                    mysql.Connect();
-                    mysql.SwitchDb("petfeeder");                            
-                    log_debug("Mysql database connected? buffer:%s",mysql.BufferError);
-                    mysql.ExecuteQuery("select * from device");
-                    mysql.CloseCon();
-                    while(mysql.Fetch()){
-                        printf("serial=%s\n", mysql.GetString("sn").c_str());
-                        printf("id_usuario=%d\n", mysql.GetInt("id_usuario"));
-                        printf("datahora=%s\n", mysql.GetString("datahora").c_str()); 
-                    }                                                                  
+                else if(tipoPacote == CMD_RESP){
+                    TPacketCmdResponse pktCmdResp;
+                    memcpy(&pktCmdResp, bufferRcv, sizeof(TPacketCmdResponse));
+                    if(setConfigurationsChild(pktCmdResp.pid.sn) == true)
+                    {
+                        log_debug("CMD_RESP received token=%d, pidParent=%d, pid=%d, server received datagram from %s (%s) %d bytes", token, getppid(), getpid(), serverUDP->GetClientName(), serverUDP->GetClientAddress(), lenBufferRcvData);
+                        log_debug("identificador=0x%02X", pktCmdResp.pid.id);
+                        log_debug("sequencia=%ul", pktCmdResp.pid.seq);
+                        log_debug("status=0x%02X", pktCmdResp.pid.st);
+                        log_debug("serial=%s", pktCmdResp.pid.sn);
+                        log_debug("idCmd=%d", pktCmdResp.idCmd);
+                        log_debug("cmd=%d", pktCmdResp.cmd);
+                        log_debug("cmdStatus=%d", pktCmdResp.cmdStatus);
+                        log_debug("crc=0x%02X", pktCmdResp.crc);    
+                    }else log_error("setConfigurationsChild()");
                 }
-                else{
-                    log_error("Pacote recebido nao reconhecido=%d", tipoPacote);
-                }
-                    
-                //serverUDP->Send((unsigned char *)"OK", 2);
-                
-                exit(EXIT_SUCCESS);
+                else log_error("Pacote recebido nao reconhecido=%d", tipoPacote);
+                   
+                break; // encerra child
             }
             else{
                 // Parent process
@@ -261,4 +363,6 @@ int main() {
             }            
         } 
     }
+    serverUDP=NULL;
+    delete serverUDP;
 }
