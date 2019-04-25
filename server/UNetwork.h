@@ -14,7 +14,7 @@
 #include <arpa/inet.h> 
 #include <netinet/in.h> 
 
-#define LEN_HOST 15
+#define LEN_HOST 100
 //------------------------------------------------------------------------------
 class TNetworkClientUDP{
     private:

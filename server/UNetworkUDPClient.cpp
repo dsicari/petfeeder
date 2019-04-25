@@ -4,6 +4,7 @@
 TNetworkClientUDP::TNetworkClientUDP(const char *host, unsigned int port){
     Bind2Any=false;
     memcpy(Host, host, sizeof(host));
+    Host[sizeof(host)+1]='\0';
     Port=port;
     memset(&ServerAddr, 0, sizeof(ServerAddr));       
 

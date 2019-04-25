@@ -57,12 +57,12 @@ int main()
         printf("\n");
     }
 
-    TNetworkClientUDP clientUDP = TNetworkClientUDP("68.183.138.223",30685);
+    TNetworkClientUDP clientUDP = TNetworkClientUDP("0.0.0.0",50685);
     if(clientUDP.CreateSocket() != false){
         unsigned char bufferRcv[sizeof(TPacketReport)];
         int lenBufferRcvData=0;
         bool r=false;
-
+        //r = clientUDP.Send(buff, sizeof(buff));
         r = clientUDP.SendRcv(buff, sizeof(buff), bufferRcv, sizeof(bufferRcv), &lenBufferRcvData);
         if(r == false){
             printf("SendRcv fails...\n");
@@ -73,7 +73,7 @@ int main()
                 printf("%02X", bufferRcv[i]);
             }
             printf("\n");
-        }        
+        }      
     }
     else{
         printf("fail create socket");
